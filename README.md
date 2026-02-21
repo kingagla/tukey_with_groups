@@ -12,6 +12,8 @@ The returned `group` column follows the convention:
 
 In short: groups sharing at least one letter are not significantly different from each other.
 
+The grouping uses a compact-letter-display split/absorb algorithm, so bridge cases are handled correctly: if A~B and B~C but A!=C then B can receive both letters (e.g. `ab`).
+
 ## Installation
 
 ```bash
@@ -57,6 +59,9 @@ tukey(df, res_var=None, xfac_var=None, alpha=0.05) -> pandas.DataFrame
 
 Returns a dataframe with:
 
-- `factor`: group/treatment name
-- `mean`: group mean (sorted descending)
+- `Groups`: group/treatment name
+- `Count`: number of observations
+- `Sum`: sum of observations
+- `Mean`: group mean (sorted descending)
+- `Variance`: sample variance
 - `group`: compact letters (`a`, `ab`, `b`, ...)

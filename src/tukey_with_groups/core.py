@@ -21,7 +21,8 @@ def _prepare_data(df: pd.DataFrame, res_var: str | None, xfac_var: str | None) -
         if df.empty:
             raise ValueError("Input DataFrame is empty.")
         long_df = df.melt(var_name="factor", value_name="value").dropna()
-        return _PreparedData(long_df=long_df, groups=sorted(long_df["factor"].astype(str).unique().tolist()))
+        long_df["factor"] = long_df["factor"].astype(str)
+        return _PreparedData(long_df=long_df, groups=sorted(long_df["factor"].unique().tolist()))
 
     if res_var not in df.columns or xfac_var not in df.columns:
         raise ValueError("`res_var` and `xfac_var` must exist in DataFrame columns.")
@@ -41,13 +42,6 @@ def _build_significance_lookup(tukey_result) -> Dict[Tuple[str, str], bool]:
     return sig
 
 
-def _is_significant(sig_lookup: Dict[Tuple[str, str], bool], a: str, b: str) -> bool:
-    if a == b:
-        return False
-    return sig_lookup.get(tuple(sorted((a, b))), False)
-
-
-
 def _letter_for_index(idx: int) -> str:
     """Convert 0-based index to a, b, ..., z, aa, ab, ..."""
     idx += 1
@@ -58,23 +52,54 @@ def _letter_for_index(idx: int) -> str:
     return out
 
 
-def _assign_letters(order: Sequence[str], sig_lookup: Dict[Tuple[str, str], bool]) -> Dict[str, str]:
-    letter_sets: List[Set[str]] = []
+def _absorb_columns(columns: List[Set[str]]) -> List[Set[str]]:
+    unique: List[Set[str]] = []
+    for col in columns:
+        if col and col not in unique:
+            unique.append(col)
 
-    for group in order:
-        assigned = False
-        for s in letter_sets:
-            if all(not _is_significant(sig_lookup, group, member) for member in s):
-                s.add(group)
-                assigned = True
-        if not assigned:
-            letter_sets.append({group})
+    keep: List[Set[str]] = []
+    for i, col in enumerate(unique):
+        if any(col < other for j, other in enumerate(unique) if i != j):
+            continue
+        keep.append(col)
+    return keep
+
+
+def _assign_letters(order: Sequence[str], sig_lookup: Dict[Tuple[str, str], bool]) -> Dict[str, str]:
+    """Assign compact-letter-display groups using a split/absorb algorithm.
+
+    Ensures no significant pair shares a letter and non-significant chains can receive
+    overlapping letters (e.g., A~B, B~C, A!=C => B can be `ab`).
+    """
+
+    rank = {name: idx for idx, name in enumerate(order)}
+    sig_pairs = [pair for pair, is_sig in sig_lookup.items() if is_sig]
+    sig_pairs.sort(key=lambda p: (min(rank.get(p[0], 10**9), rank.get(p[1], 10**9)), p))
+
+    columns: List[Set[str]] = [set(order)]
+
+    for a, b in sig_pairs:
+        updated: List[Set[str]] = []
+        for col in columns:
+            if a in col and b in col:
+                left = set(col)
+                right = set(col)
+                left.discard(a)
+                right.discard(b)
+                updated.extend([left, right])
+            else:
+                updated.append(set(col))
+        columns = _absorb_columns(updated)
+
+    columns.sort(key=lambda c: min(rank[g] for g in c))
 
     codes: Dict[str, str] = {g: "" for g in order}
-    for idx, members in enumerate(letter_sets):
+    for idx, col in enumerate(columns):
         letter = _letter_for_index(idx)
-        for group in members:
-            codes[group] += letter
+        for group in order:
+            if group in col:
+                codes[group] += letter
 
     return codes
 
@@ -85,25 +110,7 @@ def tukey(
     xfac_var: str | None = None,
     alpha: float = 0.05,
 ) -> pd.DataFrame:
-    """Run Tukey HSD and return means with compact letter groups.
-
-    Parameters
-    ----------
-    df
-        Input dataframe. For wide format, each column is a group and rows are replicates.
-        For long format, pass both `res_var` and `xfac_var`.
-    res_var
-        Response variable column (required for long format).
-    xfac_var
-        Factor/group column (required for long format).
-    alpha
-        Significance threshold for Tukey HSD.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with columns: factor, mean, group. Means are sorted descending.
-    """
+    """Run Tukey HSD and return summary stats with compact letter groups."""
 
     if not (0 < alpha < 1):
         raise ValueError("`alpha` must be between 0 and 1.")
@@ -112,11 +119,11 @@ def tukey(
     if len(prepared.groups) < 2:
         raise ValueError("Need at least two groups for Tukey HSD.")
 
-    means = (
+    summary_df = (
         prepared.long_df.groupby("factor", as_index=False)["value"]
-        .mean()
-        .sort_values("value", ascending=False)
-        .rename(columns={"value": "mean"})
+        .agg(Count="size", Sum="sum", Mean="mean", Variance="var")
+        .sort_values("Mean", ascending=False)
+        .rename(columns={"factor": "Groups"})
         .reset_index(drop=True)
     )
 
@@ -127,9 +134,8 @@ def tukey(
     )
     sig_lookup = _build_significance_lookup(tukey_result)
 
-    order = means["factor"].tolist()
+    order = summary_df["Groups"].tolist()
     letters = _assign_letters(order=order, sig_lookup=sig_lookup)
 
-    summary_df = means.copy()
-    summary_df["group"] = summary_df["factor"].map(letters)
+    summary_df["group"] = summary_df["Groups"].map(letters)
     return summary_df
