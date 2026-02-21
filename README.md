@@ -12,7 +12,7 @@ The returned `group` column follows the convention:
 
 In short: groups sharing at least one letter are not significantly different from each other.
 
-The grouping uses a sequential assignment rule: groups are sorted by mean (desc), the first unassigned gets `a` and all non-significant vs it also get `a`; for each next group we compare only with lower groups without shared letters and when non-significant we append a new common letter. This handles bridge cases like A~B and B~C but A!=C, where B gets `ab`.
+The grouping uses a sequential assignment rule: groups are sorted by mean (desc), the first unassigned gets `a` and all non-significant vs it also get `a`; for each next group we compare only with lower groups without shared letters and when non-significant we append a new common letter. This handles bridge cases like A~B and B~C but A!=C, where B gets `ab`. If a group gets non-contiguous letters (e.g. `ac`), the missing middle letters are filled (`abc`) to match the requested interpretation.
 
 ## Installation
 

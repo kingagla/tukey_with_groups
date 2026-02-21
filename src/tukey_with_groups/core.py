@@ -52,51 +52,57 @@ def _letter_for_index(idx: int) -> str:
     return out
 
 
-
-def _share_any_letter(a: str, b: str) -> bool:
+def _share_any_token(a: List[int], b: List[int]) -> bool:
     return bool(set(a).intersection(set(b)))
 
 
+def _close_letter_gaps(tokens: Dict[str, List[int]]) -> Dict[str, List[int]]:
+    """If a group has non-contiguous letters (e.g. a,c), add missing in-between (b)."""
+    out = {k: sorted(set(v)) for k, v in tokens.items()}
+    for group, vals in out.items():
+        if len(vals) < 2:
+            continue
+        start, end = min(vals), max(vals)
+        out[group] = list(range(start, end + 1))
+    return out
+
+
 def _assign_letters(order: Sequence[str], sig_lookup: Dict[Tuple[str, str], bool]) -> Dict[str, str]:
-    """Assign letters in the sequential style requested by the user.
+    """Assign letters in the requested sequential style, with gap-closing."""
 
-    Procedure:
-    1. Sort by mean descending (handled before calling this function).
-    2. First unassigned group gets next letter; all later non-significant groups get same letter.
-    3. For already-assigned group, compare only with later groups that do not share any letter yet.
-       If a later group is non-significant vs current group, append a new shared letter to both.
-    """
-
-    codes: Dict[str, str] = {g: "" for g in order}
+    token_codes: Dict[str, List[int]] = {g: [] for g in order}
     next_letter_idx = 0
 
     for i, current in enumerate(order):
-        if codes[current] == "":
-            letter = _letter_for_index(next_letter_idx)
-            next_letter_idx += 1
-            codes[current] += letter
+        if not token_codes[current]:
+            token_codes[current].append(next_letter_idx)
             for candidate in order[i + 1 :]:
                 pair = tuple(sorted((current, candidate)))
                 if not sig_lookup.get(pair, False):
-                    codes[candidate] += letter
+                    token_codes[candidate].append(next_letter_idx)
+            next_letter_idx += 1
             continue
 
         to_link: List[str] = []
         for candidate in order[i + 1 :]:
-            if _share_any_letter(codes[current], codes[candidate]):
+            if _share_any_token(token_codes[current], token_codes[candidate]):
                 continue
             pair = tuple(sorted((current, candidate)))
             if not sig_lookup.get(pair, False):
                 to_link.append(candidate)
 
         if to_link:
-            letter = _letter_for_index(next_letter_idx)
-            next_letter_idx += 1
-            codes[current] += letter
+            token_codes[current].append(next_letter_idx)
             for candidate in to_link:
-                codes[candidate] += letter
+                token_codes[candidate].append(next_letter_idx)
+            next_letter_idx += 1
 
-    return codes
+    token_codes = _close_letter_gaps(token_codes)
+
+    return {
+        group: "".join(_letter_for_index(i) for i in sorted(set(idx_list)))
+        for group, idx_list in token_codes.items()
+    }
 
 
 def tukey(

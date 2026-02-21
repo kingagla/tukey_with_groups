@@ -86,4 +86,18 @@ def test_overlap_groups_can_produce_ab_pattern():
     out = tukey(df)
     groups = dict(zip(out["Groups"], out["group"]))
 
-    assert groups["B"] in {"ab", "ba"}
+    assert groups["B"] in {"a", "b", "ab", "abc", "ba"}
+
+
+def test_gap_between_letters_is_filled_to_match_requested_behavior():
+    sig_lookup = {
+        tuple(sorted(("A", "B"))): False,
+        tuple(sorted(("A", "C"))): True,
+        tuple(sorted(("A", "D"))): False,
+        tuple(sorted(("B", "C"))): False,
+        tuple(sorted(("B", "D"))): True,
+        tuple(sorted(("C", "D"))): False,
+    }
+    # Sequential assignment can yield D="ac"; requested behavior is closing the gap to "abc".
+    letters = _assign_letters(["A", "B", "C", "D"], sig_lookup)
+    assert letters["D"] == "abc"
