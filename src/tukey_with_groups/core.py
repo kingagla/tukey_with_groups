@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Set, Tuple
+from typing import Dict, List, Sequence, Tuple
 
 import pandas as pd
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
@@ -52,54 +52,49 @@ def _letter_for_index(idx: int) -> str:
     return out
 
 
-def _absorb_columns(columns: List[Set[str]]) -> List[Set[str]]:
-    unique: List[Set[str]] = []
-    for col in columns:
-        if col and col not in unique:
-            unique.append(col)
 
-    keep: List[Set[str]] = []
-    for i, col in enumerate(unique):
-        if any(col < other for j, other in enumerate(unique) if i != j):
-            continue
-        keep.append(col)
-    return keep
+def _share_any_letter(a: str, b: str) -> bool:
+    return bool(set(a).intersection(set(b)))
 
 
 def _assign_letters(order: Sequence[str], sig_lookup: Dict[Tuple[str, str], bool]) -> Dict[str, str]:
-    """Assign compact-letter-display groups using a split/absorb algorithm.
+    """Assign letters in the sequential style requested by the user.
 
-    Ensures no significant pair shares a letter and non-significant chains can receive
-    overlapping letters (e.g., A~B, B~C, A!=C => B can be `ab`).
+    Procedure:
+    1. Sort by mean descending (handled before calling this function).
+    2. First unassigned group gets next letter; all later non-significant groups get same letter.
+    3. For already-assigned group, compare only with later groups that do not share any letter yet.
+       If a later group is non-significant vs current group, append a new shared letter to both.
     """
 
-    rank = {name: idx for idx, name in enumerate(order)}
-    sig_pairs = [pair for pair, is_sig in sig_lookup.items() if is_sig]
-    sig_pairs.sort(key=lambda p: (min(rank.get(p[0], 10**9), rank.get(p[1], 10**9)), p))
-
-    columns: List[Set[str]] = [set(order)]
-
-    for a, b in sig_pairs:
-        updated: List[Set[str]] = []
-        for col in columns:
-            if a in col and b in col:
-                left = set(col)
-                right = set(col)
-                left.discard(a)
-                right.discard(b)
-                updated.extend([left, right])
-            else:
-                updated.append(set(col))
-        columns = _absorb_columns(updated)
-
-    columns.sort(key=lambda c: min(rank[g] for g in c))
-
     codes: Dict[str, str] = {g: "" for g in order}
-    for idx, col in enumerate(columns):
-        letter = _letter_for_index(idx)
-        for group in order:
-            if group in col:
-                codes[group] += letter
+    next_letter_idx = 0
+
+    for i, current in enumerate(order):
+        if codes[current] == "":
+            letter = _letter_for_index(next_letter_idx)
+            next_letter_idx += 1
+            codes[current] += letter
+            for candidate in order[i + 1 :]:
+                pair = tuple(sorted((current, candidate)))
+                if not sig_lookup.get(pair, False):
+                    codes[candidate] += letter
+            continue
+
+        to_link: List[str] = []
+        for candidate in order[i + 1 :]:
+            if _share_any_letter(codes[current], codes[candidate]):
+                continue
+            pair = tuple(sorted((current, candidate)))
+            if not sig_lookup.get(pair, False):
+                to_link.append(candidate)
+
+        if to_link:
+            letter = _letter_for_index(next_letter_idx)
+            next_letter_idx += 1
+            codes[current] += letter
+            for candidate in to_link:
+                codes[candidate] += letter
 
     return codes
 

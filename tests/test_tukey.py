@@ -46,10 +46,26 @@ def test_bridging_group_receives_overlap_letters():
     }
     letters = _assign_letters(["A", "B", "C"], sig_lookup)
 
+    assert letters["A"] == "a"
     assert set(letters["B"]) == {"a", "b"}
-    assert any(l in letters["A"] for l in letters["B"])
-    assert any(l in letters["C"] for l in letters["B"])
-    assert not any(l in letters["A"] for l in letters["C"])
+    assert letters["C"] == "b"
+
+
+def test_user_requested_stepwise_labeling_pattern():
+    # A~B, B~C, B~D and A,C,D are all mutually significant.
+    # Expected sequential labels: A=a, B=ab, C=b, D=b
+    sig_lookup = {
+        tuple(sorted(("A", "B"))): False,
+        tuple(sorted(("A", "C"))): True,
+        tuple(sorted(("A", "D"))): True,
+        tuple(sorted(("B", "C"))): False,
+        tuple(sorted(("B", "D"))): False,
+        tuple(sorted(("C", "D"))): True,
+    }
+
+    letters = _assign_letters(["A", "B", "C", "D"], sig_lookup)
+
+    assert letters == {"A": "a", "B": "ab", "C": "b", "D": "b"}
 
 
 def test_overlap_groups_can_produce_ab_pattern():
