@@ -4,7 +4,7 @@ A small Python package that runs **Tukey HSD** and returns a ready-to-use summar
 
 ## What the group letters mean
 
-The returned `group` column follows the convention you described:
+The returned `group` column follows the convention:
 
 - `a` = highest mean group bucket.
 - `ab` = this group is **not significantly different** from both `a` and `b` groups.
